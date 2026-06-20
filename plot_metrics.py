@@ -11,6 +11,7 @@ try:
     # تنظیم استایل تمیز و علمی برای نمودار
     plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
     
+    
     # ایجاد یک قاب با دو نمودار مجزا
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
     
