@@ -1,0 +1,17 @@
+# ignore everything
+*
+
+# allow python files in current directory
+!*.py
+
+# allow datasets
+!*.csv
+
+# allow trained models
+!*.pkl
+
+# allow gitignore itself
+!.gitignore
+
+# ignore pox directory explicitly
+pox/
