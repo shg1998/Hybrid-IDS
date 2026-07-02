@@ -1,5 +1,41 @@
+"""
+online_ids.py - Real-Time SDN Online Learning Intrusion Detection System
+=======================================================================
+This script implements the primary Software-Defined Networking (SDN) application 
+for the POX controller core, acting as a real-time Adaptive Network Intrusion 
+Detection and Prevention System (IDS/IPS). It integrates streaming data extraction, 
+online probabilistic prediction, and asynchronous alert validation pipelines.
+
+EXECUTION INVOCATION:
+--------------------
 # sudo -E env PATH="$PATH" ./pox/pox.py openflow.of_01 online_ids
-# pox/ext/online_ids.py
+
+COMPONENT DEPENDENCIES & MECHANISMS:
+-------------------------------------
+1. Event-Driven Packet Interception (`_handle_PacketIn`):
+   - intercepts raw OpenFlow `PacketIn` events triggered by network switch buffers.
+   - Forwards traffic tracking data incrementally into time-segmented arrays.
+   - Enforces a rigorous, hardware-level immutable bypass rule for ICMP messages: 
+     all ICMP echo flows are exclusively mirrored to Snort and never dropped.
+2. Sliding-Window Pipeline Processing (`_process_windows`):
+   - Flushes sliding flow frames sequentially every 2 seconds (`WINDOW_DURATION = 2`).
+   - Converts live streaming dimensions to 41-element standard NSL-KDD arrays.
+   - Evaluates statistical tensors through the probabilistic predictor model to extract 
+     conditional attack likelihood scores ($p_{hat}$).
+3. Real-Time Mitigation Actions (`_enforce_policy`):
+   - Modifies switch rule parameters on the fly via `ofp_flow_mod` commands if the calculated 
+     probability exceeds the configured decision barrier (`TAU_THRESHOLD = 0.85`).
+   - Installs dynamic hardware-level reactive flow table entries with hard timeouts.
+4. Asynchronous Threaded Analytics Logging (`AsyncLogger`):
+   - Leverages independent background worker loops coupled with unbuffered FIFO queues (`deque`).
+   - Writes historical telemetry metrics and traffic flow updates down to persistent CSV storage 
+     at 100ms batches, eliminating processing friction on critical packet-switching paths.
+5. Asynchronous Validation Buffer (`FeedbackHandler`):
+   - Retains unverified predictive state summaries inside `segment_buffer` lookup maps.
+   - Listens to background text channels to tail and ingest delayed Snort structural signals.
+   - Triggers maturity-weighted regularized updates through custom `SoftLabelHoeffdingTree` 
+     blocks while systematically purging tracking records that breach timing barriers (`BUFFER_TIMEOUT = 2.0`).
+"""
 
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
