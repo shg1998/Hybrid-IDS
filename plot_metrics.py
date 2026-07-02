@@ -1,3 +1,34 @@
+"""
+plot_metrics.py - Automated Statistical Visualization Pipeline for Online IDS
+===========================================================================
+This module serves as the primary evaluation renderer for Chapter 4 of the 
+thesis. It ingests historical evaluation records from the asynchronous streaming 
+logs and renders high-density, multi-panel diagnostic performance charts.
+
+VISUALIZATION ARCHITECTURE & SIGNAL SUBPLOTS:
+---------------------------------------------
+The pipeline establishes a two-tiered grid layout to correlate statistical classification 
+metrics with strict latency parameters across an incremental execution timeline.
+
+1. Subplot 1: Online System Performance Classification Array
+   - Tracks the convergence curves for Precision, Recall (Detection Rate), and F1-Score.
+   - Plots trends as a function of incoming samples scaled by 10-step evaluation windows.
+   - Validates architectural stability and structural learning convergence over live data.
+
+2. Subplot 2: Integrated Error Rate & Dual-Axis System Latency Analysis
+   - Left Axis (Primary Y): Renders the False Positive Rate (FPR) using a distinctive 
+     red trace, highlighting unauthorized flow block anomalies.
+   - Right Axis (Secondary Twin Y): Overlays the Average Detection Delay (Seconds) using 
+     a dotted purple channel via dual-axis synchronization (`twinx`).
+   - Correlates error spikes directly with processing delays to expose system performance 
+     trade-offs under volumetric stress.
+
+OUTPUT SPECIFICATIONS:
+---------------------
+Renders unbuffered data to a high-resolution 300 DPI rasterized asset saved at 
+`/logs/system_evaluation.png`, optimized for direct insertion into TeX/PDF thesis drafts.
+"""
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
