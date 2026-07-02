@@ -1,3 +1,40 @@
+"""
+model_rf.py - Offline Baseline Pre-Training & Pipeline Serialization
+=============================================================================
+This module handles the structural initialization and offline progressive 
+pre-training of the streaming IDS framework using static historical network databases 
+(such as the consolidated NSL-KDD corpus). It initializes the core transformation 
+union pipelines before serializing the baseline model state.
+
+STREAMING DATA PROCESSING PIPELINE:
+-----------------------------------
+Unlike batch machine learning architectures, features are mapped through River's 
+dynamic asynchronous pipelines (`river.compose`) to scale and process attributes 
+on a single-sample incremental basis.
+
+1. Feature Scaling (`preprocessing.StandardScaler`):
+   - Isolates all continuous numeric attributes (e.g., counters, durations, byte sizes).
+   - Dynamically calculates rolling statistical means and variances to perform 
+     Standard Standardization ($Z = \frac{x - \mu}{\sigma}$) on the fly.
+2. Symbolic Encoding (`preprocessing.OneHotEncoder`):
+   - Maps categorical parameters (`protocol_type`, `service`, `flag`) asynchronously 
+     into dynamic binary vector spaces without requiring a predefined lexicon size.
+3. Class Integration (`TransformerUnion`):
+   - Chains numeric scales and symbolic tensors side-by-side before injecting the unified 
+     dictionary vector directly into the custom `SoftLabelHoeffdingTree` wrapper.
+
+PROGRESSIVE TRAINING LIFECYCLE (ONE-PASS):
+------------------------------------------
+- Implements strict data-stream processing logic: iterates over the dataset row-by-row, 
+  performing a progressive validation step (`predict_one`) followed immediately by an 
+  online learning state modification (`learn_one`).
+- Records continuous classification performance via streaming evaluation metrics.
+- Serializes the entire state (the preprocessing scales, vector keys, and tree nodes) 
+  into a single binary artifact (`trained_model2.pkl`) to serve as the baseline for 
+  live SDN tracking environments.
+"""
+
+
 import pandas as pd
 from river import compose, preprocessing, tree, metrics
 import pickle
