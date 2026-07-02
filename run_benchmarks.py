@@ -1,10 +1,41 @@
 #!/usr/bin/env python3
 """
-run_benchmarks.py - اسکریپت خودکارسازی سناریوهای تست حملات (مخصوص اجرا در xterm h1)
-===================================================================
-این اسکریپت مستقیماً روی خود هاست مهاجم (h1) اجرا می‌شود و ترافیک تولید می‌کند.
-"""
+run_benchmarks.py - Automated Attack Scenario Suite for Intrusion Detection Benchmarking
+========================================================================================
+This script executes natively within the network namespace of the attacker host (h1) 
+to programmatically generate automated background normal baseline traffic followed by 
+sequential multi-vector intrusion signatures targeting the victim machine (10.0.0.2).
 
+DESIGN & AUTOMATION LIFECYCLE:
+-----------------------------
+1. Non-Blocking Pipeline: Utilizes background sub-shell processing loops via 
+   subprocess.Popen to handle high-volume streaming and volumetric flood injections 
+   without interrupting the script's main timing sequence.
+2. Window Cooldowns: Enforces strict 10-second mitigation intervals between active 
+   phases. This isolates sliding-window statistics within the online learning 
+   controller, preventing data leakage and ensuring clean log segmentation.
+
+AUTOMATED INJECTION PHASES:
+--------------------------
+* Phase 0: Baseline Normal Traffic (Duration: 30s)
+  - Simulates standard network latency profiling via a low-frequency ICMP sequence. 
+  - Seeds the Online Hoeffding Tree with benign data samples prior to attack exposure.
+* Phase 1: Volumetric TCP SYN Flood Attack (Duration: 15s)
+  - Leverages hping3 to saturate port 80 using a raw synchronization (--flood) frame stream.
+  - Validates real-time mitigation response times and soft-label adaptation properties.
+* Phase 2: TCP SYN Port Scanning (Duration: 15s)
+  - Executes a controlled stealth scan (-sS) across ports 1-100 restricted to a maximum 
+    rate of 15 packets per second.
+  - Tests the system's capacity to recognize low-volume, highly structured scanning behaviors.
+* Phase 3: Volumetric ICMP Flood Attack (Duration: 5s)
+  - Triggers a rapid, aggressive flood (-f) of echo requests to overflow processing buffers.
+  - Evaluates system classification performance under high packet rates when structural 
+    network policies explicitly prevent ICMP flow blocking.
+* Phase 4: Application-Layer SSH Brute-Force Simulation (Duration: 15s)
+  - Chains persistent netcat (nc) loops to emulate sequential authentication guessing 
+    attacks targeting port 22.
+  - Assesses cross-traffic statistical tracking capacities for sensitive port violations.
+"""
 import subprocess
 import time
 import sys
