@@ -1,30 +1,30 @@
 """
-feature_extractor.py  –  نگاشت دقیق ترافیک زنده SDN به NSL-KDD
+feature_extractor.py – Precise Mapping of Live SDN Traffic to NSL-KDD
 =================================================================
 
-NSL-KDD سه دسته feature دارد:
+NSL-KDD features are categorized into three distinct groups:
 
-  A) ویژگی‌های پایه یک اتصال (duration, src_bytes, ...)
-  B) ویژگی‌های پنجره زمانی 2 ثانیه (count, srv_count, serror_rate, ...)
-     → «چند اتصال در 2 ثانیه اخیر به همان dst رفته‌اند؟»
-  C) ویژگی‌های 100 اتصال اخیر به همان dst_host (dst_host_count, ...)
-     → «در 100 اتصال اخیر به این host چه الگویی دیده‌ایم؟»
+  A) Basic Connection Features (duration, src_bytes, ...)
+  B) 2-Second Time Window Features (count, srv_count, serror_rate, ...)
+     → "How many connections have targeted the same destination in the last 2 seconds?"
+  C) Host-Based Historical Features for the last 100 connections to the same dst_host (dst_host_count, ...)
+     → "What traffic patterns have we observed in the last 100 connections to this host?"
 
-این فایل هر سه دسته را جداگانه پیاده‌سازی می‌کند.
+This file implements all three categories independently.
 
-نحوه استفاده در online_ids.py:
+Usage inside online_ids.py:
     from feature_extractor import FlowRecord, ConnectionHistory, build_nslkdd_features
 
-    # یک بار در __init__:
-    self.flow_windows  = {}
-    self.conn_history  = ConnectionHistory()
+    # Execute once inside __init__:
+    self.flow_windows = {}
+    self.conn_history = ConnectionHistory()
 
-    # در _update (هر پکت):
+    # Execute inside _update (for each incoming packet):
     if flow_id not in self.flow_windows:
         self.flow_windows[flow_id] = FlowRecord(flow_id)
     self.flow_windows[flow_id].update(packet, raw_data)
 
-    # در _process_windows (هر 2 ثانیه):
+    # Execute inside _process_windows (every 2 seconds):
     for flow_id, rec in list(self.flow_windows.items()):
         features = build_nslkdd_features(rec, self.conn_history)
         self.conn_history.add(rec)
