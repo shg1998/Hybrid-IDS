@@ -1,21 +1,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# آدرس فایل لاگ متریک‌ها
 metrics_file = "/home/moho/Documents/projects/IDS/logs/metrics_log.csv"
 
 try:
-    # بارگذاری داده‌ها
     df = pd.read_csv(metrics_file)
     
-    # تنظیم استایل تمیز و علمی برای نمودار
     plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
     
     
-    # ایجاد یک قاب با دو نمودار مجزا
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
     
-    # نمودار اول: روند متریک‌های آماری کلیدی
     ax1.plot(df.index * 10, df['Precision'], label='Precision', color='#1f77b4', linewidth=2)
     ax1.plot(df.index * 10, df['Recall'], label='Recall (Detection Rate)', color='#ff7f0e', linewidth=2)
     ax1.plot(df.index * 10, df['F1'], label='F1-Score', color='#2ca02c', linewidth=2, linestyle='--')
@@ -24,14 +19,12 @@ try:
     ax1.set_ylim(-0.05, 1.05)
     ax1.legend(loc='lower right', frameon=True)
     
-    # نمودار دوم: نرخ مثبت کاذب و تاخیر تشخیص
     color = '#d62728'
     ax2.plot(df.index * 10, df['FPR'], label='False Positive Rate (FPR)', color=color, linewidth=2)
     ax2.set_ylabel('FPR', color=color, fontsize=12)
     ax2.tick_params(axis='y', labelcolor=color)
     ax2.set_ylim(-0.05, 1.05)
     
-    # اضافه کردن محور کمکی سمت راست برای نمایش تاخیر تشخیص
     ax3 = ax2.twinx()
     color = '#9467bd'
     ax3.plot(df.index * 10, df['Avg_Det_Delay'], label='Avg Detection Delay (s)', color=color, linewidth=1.5, linestyle=':')
@@ -41,10 +34,8 @@ try:
     ax2.set_xlabel("Processed Traffic Samples (Incremental Time)", fontsize=12)
     ax2.set_title("Error Rate & System Latency Analysis", fontsize=14, fontweight='bold')
     
-    # یکپارچه‌سازی لایه ظاهری
     plt.tight_layout()
     
-    # ذخیره نمودار کیفیت بالا برای درج در بدنه پایان‌نامه
     plt.savefig("/home/moho/Documents/projects/IDS/logs/system_evaluation.png", dpi=300)
     print("🎯 نمودارهای ارزیابی با موفقیت رسم و در مسیر logs/system_evaluation.png ذخیره شدند!")
     
