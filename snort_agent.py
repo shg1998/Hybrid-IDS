@@ -1,4 +1,26 @@
 #!/usr/bin/env python3
+"""
+snort_agent.py - Asynchronous Snort IDS Orchestrator & Feedback Manager
+=======================================================================
+This script acts as the automated signature-based component ("The Teacher") 
+within the hybrid intrusion detection framework. It dynamically generates 
+detection thresholds, initializes the Snort subsystem on a mirrored interface, 
+and tails output buffers to stream real-time alert definitions back to the 
+SDN learning controller[cite: 1, 2].
+
+FRAMEWORK LIFECYCLE & MECHANISMS:
+--------------------------------
+1. Dynamic Rule Creation: Generates standard signature rules tracking severe network 
+   anomalies (SYN Floods, Port Scans, ICMP Floods, and Brute-Force indicators).
+2. Fast Alert Mode: Spawns Snort asynchronously using an unbuffered subprocess 
+   pipeline configured with "-A fast" for instant log appending.
+3. Stream Parser & Key Alignment: Tails the output alert log, extracts atomic network 
+   parameters (IP addresses, Port values, and Protocol flags), and serializes them 
+   into a unified JSON string.
+4. Inter-Process Feedback Loop: Dispatches JSON frames to a shared descriptor channel 
+   parsed asynchronously by the POX controller to reconstruct soft training signals.
+"""
+
 import subprocess, time, sys, atexit, threading, json, csv, os
 from datetime import datetime
 
