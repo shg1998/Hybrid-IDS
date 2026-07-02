@@ -2,10 +2,10 @@
 import subprocess, time, sys, atexit, threading, json, csv, os
 from datetime import datetime
 
-SNORT_CONFIG_FILE = "/tmp/snort_simple.conf"
+SNORT_CONFIG_FILE = "/home/moho/snort_simple.conf"
 SNORT_INTERFACE   = "h3-eth0"
-SNORT_LOG_DIR     = "/tmp/snort_log"
-FEEDBACK_FILE     = "/tmp/pox_snort_feedback.log"
+SNORT_LOG_DIR     = "/home/moho/snort_log"
+FEEDBACK_FILE     = "/home/moho/pox_snort_feedback.log"
 LOG_CSV           = "/home/moho/snort_alerts.csv"
 
 snort_process = None

@@ -1,17 +1,19 @@
-# ignore everything
+# 1. nuke everything by default
 *
 
-# allow python files in current directory
+# 2. white-list specific file types globally
 !*.py
-
-# allow datasets
-!*.csv
-
-# allow trained models
+!.gitignore
 !*.pkl
 
-# allow gitignore itself
-!.gitignore
+# 3. white-list top-level csv (main dataset)
+!/All_Traffic_NSL-KDD.csv
 
-# ignore pox directory explicitly
+# 4. allow the logs directory AND all its contents (CSV, PNG, etc.)
+!logs/
+!logs/*
+
+# 5. explicitly ignore environments and cache
 pox/
+venv/
+__pycache__/

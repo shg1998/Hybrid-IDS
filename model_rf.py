@@ -25,7 +25,7 @@ col_names = [
     'dst_host_srv_rerror_rate', 'label'
 ]
 
-df_train = pd.read_csv('./datasets/All_Traffic_NSL-KDD.csv', names=col_names)
+df_train = pd.read_csv('./All_Traffic_NSL-KDD.csv', names=col_names)
 df_train['label'] = df_train['label'].apply(lambda x: 0 if x == 'normal' else 1)
 
 categorical_cols = ['protocol_type', 'service', 'flag']
