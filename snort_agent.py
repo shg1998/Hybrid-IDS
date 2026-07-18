@@ -18,25 +18,22 @@ var EXTERNAL_NET any
 preprocessor stream5_global: track_tcp yes, track_udp yes
 preprocessor stream5_tcp: policy first
 
-# 1. تشخیص SYN Flood (تعداد زیاد درخواست SYN به یک مقصد در ۲ ثانیه)
-alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"SYN Flood Detected"; flags:S; detection_filter:track by_dst, count 30, seconds 2; sid:1000001; rev:1;)
+# 1. تشخیص SYN Flood (اصلاح شده: شمارش 50 پکت در 2 ثانیه - بسیار سبک‌تر برای اسنورت)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"SYN Flood Detected"; flags:S; detection_filter:track by_dst, count 50, seconds 2; sid:1000001; rev:1;)
 
-# 2. تشخیص Port Scan (تعداد زیاد درخواست SYN از یک مبدأ در ۵ ثانیه)
-alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"Port Scan Detected"; flags:S; detection_filter:track by_src, count 20, seconds 5; sid:1000002; rev:1;)
+# 2. تشخیص Port Scan (اصلاح شده: شمارش 15 پکت در 5 ثانیه متناسب با نرخ 100 نmap)
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"Port Scan Detected"; flags:S; detection_filter:track by_src, count 15, seconds 5; sid:1000002; rev:1;)
 
-# 3. تشخیص ICMP Flood (تعداد زیاد پینگ به یک مقصد در ۲ ثانیه)
-alert icmp $EXTERNAL_NET any -> $HOME_NET any (msg:"ICMP Flood Detected"; itype:8; detection_filter:track by_dst, count 20, seconds 2; sid:1000003; rev:1;)
+# 3. تشخیص ICMP Flood (اصلاح شده: شمارش 50 پینگ در 2 ثانیه - جلوگیری از اشباع صف اسنورت)
+alert icmp $EXTERNAL_NET any -> $HOME_NET any (msg:"ICMP Flood Detected"; itype:8; detection_filter:track by_dst, count 50, seconds 2; sid:1000003; rev:1;)
 
-# 4. تشخیص SSH Brute-Force (تعداد زیاد تلاش برای SSH از یک مبدأ)
-alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"SSH Brute Force"; flags:SA; detection_filter:track by_src, count 5, seconds 10; sid:1000004; rev:1;)
-
-# (اختیاری) ترافیک عادی به صورت پیش‌فرض نادیده گرفته می‌شود، اما اگر بخواهید می‌توانید برای دیباگ لاگ کنید:
-# log tcp any any -> any any (msg:"Normal TCP Traffic"; sid:9999999; rev:1;)
+# 4. تشخیص SSH Brute-Force (بررسی فلگ S مبدا - تضمین تشخیص فاز 4 بنچمارک جدید)
+alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"SSH Brute Force Detected"; flags:S; detection_filter:track by_src, count 5, seconds 10; sid:1000004; rev:1;)
 """
     with open(SNORT_CONFIG_FILE, 'w') as f:
         f.write(config.strip())
-    print("✅ Snort config created with attack detection rules.")
-
+    print("✅ Snort config با ساختار بهینه و تفکیک‌شده برای هر 4 فاز ایجاد شد.")
+    
 def log_alert_to_csv(alert_data):
     file_exists = os.path.isfile(LOG_CSV)
     with open(LOG_CSV, mode='a', newline='') as f:
@@ -90,8 +87,19 @@ def parse_alert_line(line):
         if '->' not in addr_part:
             return None
         src, dst = addr_part.split('->')
-        src_ip, src_port = src.strip().split(':')
-        dst_ip, dst_port = dst.strip().split(':')
+        src = src.strip()
+        dst = dst.strip()
+
+        # بررسی وجود پورت (به خصوص برای پکت‌های ICMP که پورت ندارند)
+        if ':' in src:
+            src_ip, src_port = src.split(':')
+        else:
+            src_ip, src_port = src, '0'
+
+        if ':' in dst:
+            dst_ip, dst_port = dst.split(':')
+        else:
+            dst_ip, dst_port = dst, '0'
 
         protocol = "TCP"
         if "{UDP}" in line:
@@ -108,9 +116,9 @@ def parse_alert_line(line):
             "protocol": protocol
         }
     except Exception as e:
-        print(f"Parse error: {e}")
+        print(f"❌ Parse error: {e}")
         return None
-
+    
 def send_alert(alert_data):
     try:
         with open(FEEDBACK_FILE, 'a') as f:

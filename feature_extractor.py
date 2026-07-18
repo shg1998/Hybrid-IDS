@@ -1,334 +1,187 @@
-"""
-feature_extractor.py  –  نگاشت دقیق ترافیک زنده SDN به NSL-KDD
-=================================================================
-
-NSL-KDD سه دسته feature دارد:
-
-  A) ویژگی‌های پایه یک اتصال (duration, src_bytes, ...)
-  B) ویژگی‌های پنجره زمانی 2 ثانیه (count, srv_count, serror_rate, ...)
-     → «چند اتصال در 2 ثانیه اخیر به همان dst رفته‌اند؟»
-  C) ویژگی‌های 100 اتصال اخیر به همان dst_host (dst_host_count, ...)
-     → «در 100 اتصال اخیر به این host چه الگویی دیده‌ایم؟»
-
-این فایل هر سه دسته را جداگانه پیاده‌سازی می‌کند.
-
-نحوه استفاده در online_ids.py:
-    from feature_extractor import FlowRecord, ConnectionHistory, build_nslkdd_features
-
-    # یک بار در __init__:
-    self.flow_windows  = {}
-    self.conn_history  = ConnectionHistory()
-
-    # در _update (هر پکت):
-    if flow_id not in self.flow_windows:
-        self.flow_windows[flow_id] = FlowRecord(flow_id)
-    self.flow_windows[flow_id].update(packet, raw_data)
-
-    # در _process_windows (هر 2 ثانیه):
-    for flow_id, rec in list(self.flow_windows.items()):
-        features = build_nslkdd_features(rec, self.conn_history)
-        self.conn_history.add(rec)
-        ...
-"""
-
 import time
 from collections import deque, defaultdict
 
-
-# ══════════════════════════════════════════════════════════════════
-# ۱. نگاشت سرویس
-# ══════════════════════════════════════════════════════════════════
 class ServiceMapper:
-    _TCP = {
-        20: 'ftp_data', 21: 'ftp', 22: 'ssh', 23: 'telnet',
-        25: 'smtp', 53: 'domain', 80: 'http', 110: 'pop_3',
-        113: 'auth', 143: 'imap4', 443: 'https', 512: 'exec',
-        513: 'login', 514: 'shell', 515: 'printer',
-        540: 'uucp', 543: 'klogin', 544: 'kshell',
-        8080: 'http_8001', 8443: 'https',
-    }
-    _UDP = {
-        53: 'domain_u', 123: 'ntp_u', 161: 'snmp', 162: 'snmp',
-    }
-
-    @classmethod
-    def get(cls, proto: str, port: int) -> str:
-        if proto == 'tcp':
-            return cls._TCP.get(port, 'other')
-        if proto == 'udp':
-            return cls._UDP.get(port, 'other')
-        if proto == 'icmp':
-            return 'ecr_i'
-        return 'other'
-
-
-# ══════════════════════════════════════════════════════════════════
-# ۲. نگاشت Flag
-# ══════════════════════════════════════════════════════════════════
-class FlagMapper:
     @staticmethod
-    def compute(syn: int, fin: int, rst: int, ack: int) -> str:
-        if syn > 0 and fin > 0 and rst == 0:
-            return 'SF'
-        if syn > 0 and fin > 0 and rst > 0:
-            return 'S3'
-        if syn > 0 and ack > 0 and fin == 0 and rst == 0:
-            return 'S1'
-        if syn > 0 and fin == 0 and rst == 0 and ack == 0:
-            return 'S0'
-        if syn > 0 and rst > 0 and fin == 0:
-            return 'RSTO'
-        if rst > 0 and syn == 0:
-            return 'REJ'
-        if fin > 0 and syn == 0:
-            return 'S2'
-        return 'OTH'
+    def get(proto: str, port: int) -> str:
+        ports = {21: 'ftp', 22: 'ssh', 23: 'telnet', 25: 'smtp', 53: 'dns', 80: 'http', 443: 'https'}
+        return ports.get(port, 'other').lower()
 
-    ERROR_FLAGS = {'S0', 'S1', 'S2', 'S3'}
-
-
-# ══════════════════════════════════════════════════════════════════
-# ۳. رکورد یک Flow  (دسته A)
-# ══════════════════════════════════════════════════════════════════
 class FlowRecord:
     __slots__ = [
-        'flow_id', 'start_time',
-        'pkt_count', 'src_bytes', 'dst_bytes',
-        'syn_count', 'fin_count', 'rst_count', 'ack_count', 'urg_count',
-        'protocol_type', 'service', 'src_ip', 'dst_ip',
-        'src_port', 'dst_port', 'land','wrong_fragment',
+        'flow_id', 'start_time', 'last_time', 'pkt_count', 'src_bytes', 'dst_bytes',
+        's_pkts', 'd_pkts', 'proto', 'service', 'state', 'src_ip', 'dst_ip',
+        'src_port', 'dst_port', 
+        'stcpb', 'dtcpb', 'swin', 'dwin',
+        'last_pkt_time', 'pkt_intervals', 'syn_time', 'synack_time', 'ack_time',
+        'is_flow_ended'
     ]
 
     def __init__(self, flow_id: str):
-        self.flow_id       = flow_id
-        self.start_time    = time.time()
-        self.pkt_count     = 0
-        self.src_bytes     = 0
-        self.dst_bytes     = 0
-        self.syn_count     = 0
-        self.fin_count     = 0
-        self.rst_count     = 0
-        self.ack_count     = 0
-        self.urg_count     = 0
-        self.protocol_type = 'tcp'
-        self.service       = 'other'
-        self.src_ip        = ''
-        self.dst_ip        = ''
-        self.src_port      = 0
-        self.dst_port      = 0
-        self.land          = 0
-        self.wrong_fragment= 0
+        self.flow_id = flow_id
+        self.start_time = time.time()
+        self.last_time = time.time()
+        self.pkt_count = 0
+        self.src_bytes = 0
+        self.dst_bytes = 0
+        self.s_pkts = 0
+        self.d_pkts = 0
+        self.proto = 'tcp'
+        self.service = 'other'
+        self.state = 'CON'
+        self.src_ip = ''
+        self.dst_ip = ''
+        self.src_port = 0
+        self.dst_port = 0
+        
+        self.stcpb = 0
+        self.dtcpb = 0
+        self.swin = 0
+        self.dwin = 0
+        
+        self.last_pkt_time = None
+        self.pkt_intervals = deque(maxlen=50)
+        self.syn_time = 0.0
+        self.synack_time = 0.0
+        self.ack_time = 0.0
+        self.is_flow_ended = False
 
     def update(self, packet, raw_data: bytes):
+        now = time.time()
         self.pkt_count += 1
-        # self.src_bytes += len(raw_data)
+        self.last_time = now
 
-        ip   = packet.find('ipv4')
-        tcp  = packet.find('tcp')
-        udp  = packet.find('udp')
+        if self.last_pkt_time:
+            self.pkt_intervals.append(now - self.last_pkt_time)
+        self.last_pkt_time = now
+
+        ip = packet.find('ipv4')
+        tcp = packet.find('tcp')
+        udp = packet.find('udp')
         icmp = packet.find('icmp')
 
-        
-            
         if ip:
-            if self.src_ip == '':    
+            if self.src_ip == '':
                 self.src_ip = str(ip.srcip)
                 self.dst_ip = str(ip.dstip)
-          
-            if self.src_ip == self.dst_ip:
-                self.land = 1
-         
-            if ip.srcip == self.src_ip: 
+
+            if str(ip.srcip) == self.src_ip:
                 self.src_bytes += len(raw_data)
+                self.s_pkts += 1
             else:
                 self.dst_bytes += len(raw_data)
-    
-            if ip.frag != 0 or (ip.flags & 0x2):   # MF bit
-                self.wrong_fragment += 1
+                self.d_pkts += 1
 
         if tcp:
-            self.protocol_type = 'tcp'
+            self.proto = 'tcp'
             self.src_port = tcp.srcport
             self.dst_port = tcp.dstport
-            self.service  = ServiceMapper.get('tcp', tcp.dstport)
-            f = tcp.flags
-            if f & 0x02: self.syn_count += 1
-            if f & 0x01: self.fin_count += 1
-            if f & 0x04: self.rst_count += 1
-            if f & 0x10: self.ack_count += 1
-            if f & 0x20: self.urg_count += 1
+            self.service = ServiceMapper.get('tcp', tcp.dstport)
 
-            # if tcp.dstport < 1024 or tcp.dstport in ServiceMapper._TCP:
-            #     self.src_bytes += len(raw_data)
-            # elif tcp.srcport < 1024 or tcp.srcport in ServiceMapper._TCP:
-            #     self.dst_bytes += len(raw_data)
-            # else:
-            #     self.src_bytes += len(raw_data)
+            self.stcpb = getattr(tcp, 'seq', 0)
+            self.dtcpb = getattr(tcp, 'ack', 0)
+            self.swin = getattr(tcp, 'window', 0)
+            self.dwin = getattr(tcp, 'window', 0)
+
+            f = tcp.flags
+            if f & 0x02:
+                self.syn_time = now
+                self.state = 'REQ'
+            if (f & 0x02) and (f & 0x10):
+                self.synack_time = now
+                self.state = 'ACC'
+            if (f & 0x10) and not (f & 0x02):
+                if self.synack_time > 0:
+                    self.ack_time = now
+                    self.state = 'CON'
+            if f & 0x01:
+                self.state = 'FIN'
+                self.is_flow_ended = True
+            if f & 0x04:
+                self.state = 'RST'
+                self.is_flow_ended = True
 
         elif udp:
-            self.protocol_type = 'udp'
+            self.proto = 'udp'
             self.src_port = udp.srcport
             self.dst_port = udp.dstport
-            self.service  = ServiceMapper.get('udp', udp.dstport)
-            # if udp.dstport < 1024 or udp.dstport in ServiceMapper._UDP:
-            #     self.src_bytes += len(raw_data)
-            # elif udp.srcport < 1024 or udp.srcport in ServiceMapper._UDP:
-            #     self.dst_bytes += len(raw_data)
-            # else:
-            #     self.src_bytes += len(raw_data)
+            self.service = ServiceMapper.get('udp', udp.dstport)
+            self.state = 'INT'
 
-        # ✅ بهتر:
         elif icmp:
-            self.protocol_type = 'icmp'
-            ICMP_SERVICE_MAP = {
-                0:  'ecr_i',   # echo reply
-                8:  'eco_i',   # echo request
-                3:  'urh_i',   # destination unreachable
-                11: 'tim_i',   # time exceeded
-            }
-            self.service = ICMP_SERVICE_MAP.get(icmp.type, 'icmp')
-            # if icmp.type == 0:
-            #     self.dst_bytes += len(raw_data)
-            # else:
-            #     self.src_bytes += len(raw_data)
-    
-    @property
-    def flag(self) -> str:
-        return FlagMapper.compute(
-            self.syn_count, self.fin_count,
-            self.rst_count, self.ack_count
-        )
+            self.proto = 'icmp'
+            self.service = 'other'
+            self.state = 'URP'
 
-    def base_features(self) -> dict:
-        return {
-            'duration':           max(time.time() - self.start_time, 0.0),
-            'protocol_type':      self.protocol_type,
-            'service':            self.service,
-            'flag':               self.flag,
-            'land':               self.land,
-            'src_bytes':          self.src_bytes,
-            'dst_bytes':          self.dst_bytes,     
-            'wrong_fragment':     self.wrong_fragment,
-            'urgent':             self.urg_count,
-            'hot':                0,
-            'num_failed_logins':  0,
-            'logged_in':          0,
-            'num_compromised':    0,
-            'root_shell':         0,
-            'su_attempted':       0,
-            'num_root':           0,
-            'num_file_creations': 0,
-            'num_shells':         0,
-            'num_access_files':   0,
-            'num_outbound_cmds':  0,
-            'is_host_login':      0,
-            'is_guest_login':     0,
+    def get_unsw_features(self, history) -> dict:
+        real_duration = max(self.last_time - self.start_time, 0.001)
+        duration = max(real_duration, 1.0) if self.pkt_count <= 2 else max(real_duration, 0.001)
+        
+        s_load = (self.src_bytes * 8) / duration if duration > 0 else 0
+        d_load = (self.dst_bytes * 8) / duration if duration > 0 else 0
+        s_meansz = self.src_bytes / max(self.s_pkts, 1)
+        d_meansz = self.dst_bytes / max(self.d_pkts, 1)
+        
+        intervals = list(self.pkt_intervals)
+        avg_intpkt = sum(intervals) / max(len(intervals), 1)
+        jit = 0.0
+        if len(intervals) > 1:
+            mean = sum(intervals) / len(intervals)
+            jit = sum((x - mean) ** 2 for x in intervals) / len(intervals)
+
+        synack = max(self.synack_time - self.syn_time, 0.0) if self.syn_time and self.synack_time else 0.0
+        ackdat = max(self.ack_time - self.synack_time, 0.0) if self.synack_time and self.ack_time else 0.0
+        tcprtt = synack + ackdat
+
+        f = {
+            'dur': duration, 'sbytes': self.src_bytes, 'dbytes': self.dst_bytes,
+            'sloss': 0, 'dloss': 0, 'Sload': s_load, 'Dload': d_load, 
+            'Spkts': self.s_pkts, 'Dpkts': self.d_pkts,
+            'smeansz': s_meansz, 'dmeansz': d_meansz, 'trans_depth': 1 if self.service == 'http' else 0,
+            'Sjit': jit, 'Djit': jit * 0.5, 'Sintpkt': avg_intpkt, 'Dintpkt': avg_intpkt,
+            'tcprtt': tcprtt, 'synack': synack, 'ackdat': ackdat,
+            'is_sm_ips_ports': 1 if (self.src_ip == self.dst_ip) else 0,
+            'stcpb': self.stcpb, 'dtcpb': self.dtcpb, 'swin': self.swin, 'dwin': self.dwin,
+            'sttl': 0, 'dttl': 0,
+            'sport': self.src_port, 'dsport': self.dst_port,
+            'res_bdy_len': 0,   # ✅ اضافه شدن کلید گم‌شده
         }
 
+        f.update(history.get_cross_features(self.src_ip, self.dst_ip, self.dst_port, self.service, self.state))
+        
+        f['proto'] = str(self.proto).lower().strip()
+        f['service'] = str(self.service).lower().strip()
+        f['state'] = str(self.state).upper().strip()
+        return f
 
-# ══════════════════════════════════════════════════════════════════
-# ۴. تاریخچه اتصالات  (دسته B و C)
-# ══════════════════════════════════════════════════════════════════
 class ConnectionHistory:
-    WINDOW_SEC   = 2
-    HOST_HISTORY = 100
-
     def __init__(self):
-        self._time_buf: deque = deque()
-        self._host_buf: dict  = defaultdict(
-            lambda: deque(maxlen=self.HOST_HISTORY)
-        )
+        self.buffer = deque(maxlen=500)
 
     def add(self, rec: FlowRecord):
-        entry = {
-            'ts':       time.time(),
-            'dst_ip':   rec.dst_ip,
-            'src_ip':   rec.src_ip,
-            'src_port': rec.src_port,
-            'service':  rec.service,
-            'flag':     rec.flag,
-            'syn':      rec.syn_count,
-            'rst':      rec.rst_count,
-        }
-        self._time_buf.append(entry)
-        if rec.dst_ip:
-            self._host_buf[rec.dst_ip].append(entry)
+        self.buffer.append({
+            'src_ip': rec.src_ip, 'dst_ip': rec.dst_ip,
+            'dst_port': rec.dst_port, 'service': rec.service,
+            'state': rec.state, 'is_http': 1 if rec.service == 'http' else 0
+        })
 
-    def _prune(self):
-        cutoff = time.time() - self.WINDOW_SEC
-        while self._time_buf and self._time_buf[0]['ts'] < cutoff:
-            self._time_buf.popleft()
-
-    # ── دسته B ───────────────────────────────────────────────────
-    def window_features(self, dst_ip: str, service: str) -> dict:
-        self._prune()
-        buf = list(self._time_buf)
-
-        same_dst = [e for e in buf if e['dst_ip'] == dst_ip]
-        same_srv = [e for e in buf if e['service'] == service]
-
-        count = len(same_dst)
-        srv_count = len(same_srv)
-
-        def is_serror(e): return e['syn'] > 0 and e['flag'] in FlagMapper.ERROR_FLAGS
-        def is_rerror(e): return e['rst'] > 0
-
-        serror_rate = sum(1 for e in same_dst if is_serror(e)) / count if count > 0 else 0
-        rerror_rate = sum(1 for e in same_dst if is_rerror(e)) / count if count > 0 else 0
-
-        srv_serror_rate = sum(1 for e in same_srv if is_serror(e)) / srv_count if srv_count > 0 else 0
-        srv_rerror_rate = sum(1 for e in same_srv if is_rerror(e)) / srv_count if srv_count > 0 else 0
-
-        same_srv_in_dst = sum(1 for e in same_dst if e['service'] == service)
-        same_srv_rate = same_srv_in_dst / count if count > 0 else 0
-        diff_srv_rate = 1.0 - same_srv_rate
-
-        srv_diff_host = sum(1 for e in same_srv if e['dst_ip'] != dst_ip)
-        srv_diff_host_rate = srv_diff_host / srv_count if srv_count > 0 else 0
-
+    def get_cross_features(self, src_ip, dst_ip, dst_port, service, state) -> dict:
+        buf = list(self.buffer)
+        abnormal_states = ['S0', 'S1', 'REJ', 'RSTO']
+        
         return {
-            'count': count,
-            'srv_count': srv_count,
-            'serror_rate': serror_rate,
-            'srv_serror_rate': srv_serror_rate,
-            'rerror_rate': rerror_rate,
-            'srv_rerror_rate': srv_rerror_rate,
-            'same_srv_rate': same_srv_rate,
-            'diff_srv_rate': diff_srv_rate,
-            'srv_diff_host_rate': srv_diff_host_rate,
-        }
-    # ── دسته C ───────────────────────────────────────────────────
-    def host_features(self, dst_ip: str, service: str, src_port: int) -> dict:
-        buf = list(self._host_buf.get(dst_ip, []))
-        total = len(buf)
-        same_srv = [e for e in buf if e['service'] == service]
-        srv_tot = len(same_srv)
-
-        def is_serror(e):
-            return e['syn'] > 0 and e['flag'] in FlagMapper.ERROR_FLAGS
-
-        def is_rerror(e):
-            return e['rst'] > 0
-
-        return {
-            'dst_host_count': total,
-            'dst_host_srv_count': srv_tot,
-            'dst_host_same_srv_rate': srv_tot / total if total > 0 else 0,
-            'dst_host_diff_srv_rate': 1.0 - (srv_tot / total) if total > 0 else 0,
-            'dst_host_same_src_port_rate': sum(1 for e in buf if e['src_port'] == src_port) / total if total > 0 else 0,
-            'dst_host_srv_diff_host_rate': len(set(e['src_ip'] for e in same_srv)) / srv_tot if srv_tot > 0 else 0,
-            'dst_host_serror_rate': sum(1 for e in buf if is_serror(e)) / total if total > 0 else 0,
-            'dst_host_srv_serror_rate': sum(1 for e in same_srv if is_serror(e)) / srv_tot if srv_tot > 0 else 0,
-            'dst_host_rerror_rate': sum(1 for e in buf if is_rerror(e)) / total if total > 0 else 0,
-            'dst_host_srv_rerror_rate': sum(1 for e in same_srv if is_rerror(e)) / srv_tot if srv_tot > 0 else 0,
+            'ct_srv_src': sum(1 for e in buf if e['src_ip'] == src_ip and e['service'] == service),
+            'ct_srv_dst': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['service'] == service),
+            'ct_dst_ltm': sum(1 for e in buf if e['dst_ip'] == dst_ip),
+            'ct_src_ltm': sum(1 for e in buf if e['src_ip'] == src_ip),
+            'ct_src_dport_ltm': sum(1 for e in buf if e['src_ip'] == src_ip and e['dst_port'] == dst_port),
+            'ct_dst_sport_ltm': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['dst_port'] == dst_port),
+            'ct_dst_src_ltm': sum(1 for e in buf if e['src_ip'] == src_ip and e['dst_ip'] == dst_ip),
+            'ct_state_ttl': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['state'] in abnormal_states),
+            'ct_flw_http_mthd': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['is_http'] == 1),
+            'is_ftp_login': 0, 
+            'ct_ftp_cmd': 0
         }
 
-# ══════════════════════════════════════════════════════════════════
-# ۵. تابع اصلی
-# ══════════════════════════════════════════════════════════════════
-def build_nslkdd_features(rec: FlowRecord, history: ConnectionHistory) -> dict:
-    """41 feature کامل NSL-KDD را برمی‌گرداند."""
-    f = rec.base_features()
-    f.update(history.window_features(rec.dst_ip, rec.service))
-    f.update(history.host_features(rec.dst_ip, rec.service, rec.src_port))
-    return f
+def build_unsw_features(rec: FlowRecord, history: ConnectionHistory) -> dict:
+    return rec.get_unsw_features(history)
