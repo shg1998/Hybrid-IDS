@@ -13,7 +13,7 @@ log = core.getLogger()
 # پارامترهای تنظیم‌شده برای حالت Snort-Only
 # ============================================================
 WINDOW_DURATION = 2
-TAU_THRESHOLD   = 2.0  # 👈 ست کردن روی 2.0 تا مدل ML هیچ‌وقت مستقل تصمیم نگیرد
+TAU_THRESHOLD   = 2.0
 ALPHA_MAX       = 0.9
 ALPHA_MIN       = 0.1
 LAMBDA_DECAY    = 0.005
