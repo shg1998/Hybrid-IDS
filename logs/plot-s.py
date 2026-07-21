@@ -3,73 +3,72 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
-log_dir = "/home/moho/Documents/projects/IDS/logs"
-hybrid_path = os.path.join(log_dir, "metrics_hybrid.csv")
-snort_path = os.path.join(log_dir, "metrics_snort_only.csv")
-output_plot = os.path.join(log_dir, "thesis_final_clean.png")
+LOG_DIR = "/home/moho/Documents/projects/IDS/logs"
+MODES = ["snort_only", "ml_only", "hybrid_static", "hybrid_online"]
+COLORS = {'snort_only': '#d62728', 'ml_only': '#ff7f0e', 'hybrid_static': '#2ca02c', 'hybrid_online': '#1f77b4'}
+LABELS = {
+    'snort_only': 'Snort-Only (Signature)',
+    'ml_only': 'ML-Only (Streaming Tree)',
+    'hybrid_static': 'Hybrid (Static)',
+    'hybrid_online': 'Proposed Hybrid (Online Feedback)'
+}
 
 def main():
-    if not os.path.exists(hybrid_path) or not os.path.exists(snort_path):
-        print("❌ فایل‌های CSV پیدا نشد! حتماً بنچمارک رو دوباره اجرا کنید.")
-        return
-
-    df_hybrid = pd.read_csv(hybrid_path)
-    df_snort = pd.read_csv(snort_path)
-
-    # صاف‌سازی منحنی‌ها با درون‌یابی (پرش‌های عمودی حذف می‌شوند)
-    df_hybrid_smooth = df_hybrid.interpolate(method='pchip', limit_direction='both')
-    df_snort_smooth = df_snort.interpolate(method='pchip', limit_direction='both')
-
-    # ✅ محاسبه طول‌های واقعی هر خط و ایجاد محور X جداگانه برای هرکدام
-    len_hybrid = len(df_hybrid_smooth)
-    len_snort = len(df_snort_smooth)
-    
-    # محور X = تعداد پنجره‌ها * ۱۰ (چون هر ۱۰ نمونه لاگ زده شده)
-    steps_hybrid = [i * 10 for i in range(1, len_hybrid + 1)]
-    steps_snort = [i * 10 for i in range(1, len_snort + 1)]
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 10), constrained_layout=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), constrained_layout=True)
     plt.style.use('seaborn-v0_8-whitegrid')
+    
+    summary_data = []
 
-    # --- نمودار اول: F1-Score ---
-    ax1.plot(steps_hybrid, df_hybrid_smooth['F1'], color='#1f77b4', linewidth=2.5, linestyle='-', label='Proposed Hybrid IDS (UNSW-NB15)')
-    ax1.plot(steps_snort, df_snort_smooth['F1'], color='#d62728', linewidth=2.5, linestyle='--', label='Snort-Only (Baseline)')
-    ax1.set_title("Incremental F1-Score Convergence Comparison", fontsize=15, fontweight='bold', pad=15)
-    ax1.set_ylabel("F1-Score (0.0 - 1.0)", fontsize=12, fontweight='bold')
-    ax1.set_ylim(0.0, 1.05)
-    ax1.set_xlim(0, 120000)  # بازه محور X تا ۱۲۰,۰۰۰
-    ax1.grid(True, linestyle=':', alpha=0.7)
-    ax1.legend(loc='lower right', fontsize=11, framealpha=1, edgecolor='black')
+    for mode in MODES:
+        path = os.path.join(LOG_DIR, f"metrics_{mode}.csv")
+        if not os.path.exists(path):
+            print(f"⚠️ Warning: Log file {path} not found. Skipping...")
+            continue
+            
+        df = pd.read_csv(path)
+        steps = [i * 10 for i in range(1, len(df) + 1)]
+        
+        # رسم F1-Score
+        ax1.plot(steps, df['F1'], color=COLORS[mode], linewidth=2.2, label=LABELS[mode])
+        
+        # رسم Latency
+        ax2.plot(steps, df['Avg_Det_Delay'], color=COLORS[mode], linewidth=2.2, label=LABELS[mode])
+        
+        # استخراج آمار نهایی جهت ساخت جدول
+        last_row = df.iloc[-1]
+        summary_data.append({
+            'Execution Mode': LABELS[mode],
+            'Precision': f"{last_row['Precision']:.3f}",
+            'Recall': f"{last_row['Recall']:.3f}",
+            'F1-Score': f"{last_row['F1']:.3f}",
+            'FPR': f"{last_row['FPR']:.3f}",
+            'Avg Detection Delay (s)': f"{last_row['Avg_Det_Delay']:.3f}",
+            'Avg Blocking Delay (s)': f"{last_row['Avg_Block_Delay']:.3f}"
+        })
 
-    # --- نمودار دوم: FPR و Detection Delay ---
-    color_fpr = '#2ca02c'
-    color_lat = '#9467bd'
+    # تنظیمات نمودار F1
+    ax1.set_title("1. Incremental F1-Score Performance Comparison across 4 Execution Modes", fontsize=14, fontweight='bold')
+    ax1.set_ylabel("F1-Score", fontsize=12, fontweight='bold')
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.legend(loc='lower right', frameon=True, edgecolor='black')
 
-    ax2.plot(steps_hybrid, df_hybrid_smooth['FPR'], color=color_fpr, linewidth=2, linestyle='-', label='Hybrid IDS FPR')
-    ax2.plot(steps_snort, df_snort_smooth['FPR'], color=color_fpr, linewidth=2, linestyle='--', label='Snort-Only FPR')
-    ax2.set_ylabel("False Positive Rate (FPR)", color=color_fpr, fontsize=12, fontweight='bold')
-    ax2.tick_params(axis='y', labelcolor=color_fpr)
-    ax2.set_ylim(-0.05, 1.05)
-
-    ax3 = ax2.twinx()
-    ax3.plot(steps_hybrid, df_hybrid_smooth['Avg_Det_Delay'], color=color_lat, linewidth=2.5, linestyle=':', label='Hybrid Detection Delay')
-    ax3.plot(steps_snort, df_snort_smooth['Avg_Det_Delay'], color=color_lat, linewidth=2.5, linestyle='-.', label='Snort Detection Delay')
-    ax3.set_ylabel("Detection Latency (Seconds)", color=color_lat, fontsize=12, fontweight='bold')
-    ax3.tick_params(axis='y', labelcolor=color_lat)
-
+    # تنظیمات نمودار Delay
+    ax2.set_title("2. Real-Time Detection Latency Comparison (Seconds)", fontsize=14, fontweight='bold')
     ax2.set_xlabel("Processed Traffic Windows (Incremental Samples)", fontsize=12, fontweight='bold')
-    ax2.set_title("False Positive Rate & Detection Latency Profiling", fontsize=15, fontweight='bold', pad=15)
-    ax2.set_xlim(0, 120000)  # بازه محور X تا ۱۲۰,۰۰۰
-    ax2.grid(True, linestyle=':', alpha=0.7)
+    ax2.set_ylabel("Detection Latency (s)", fontsize=12, fontweight='bold')
+    ax2.legend(loc='upper right', frameon=True, edgecolor='black')
 
-    lines1, labels1 = ax2.get_legend_handles_labels()
-    lines2, labels2 = ax3.get_legend_handles_labels()
-    ax3.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=10, framealpha=1, edgecolor='black')
-
+    output_plot = os.path.join(LOG_DIR, "4state_benchmark_comparison.png")
     plt.savefig(output_plot, dpi=300, bbox_inches='tight')
-    print(f"🎯 نمودار نهایی و کاملاً واقعی ذخیره شد!\n📁 مسیر: {output_plot}")
-    print("✅ نکته: خط قرمز (اسنورت) در ۵۵,۰۰۰ طبیعی تمام شده و ادامه داده‌ای ندارد. این دقیقاً یعنی سناریوی اسنورت زودتر به پایان رسیده است.")
+    print(f"🎯 Comparison plot saved to: {output_plot}\n")
+
+    # چاپ جدول نتایج برای درج در فصل ۴ پایان‌نامه
+    df_summary = pd.DataFrame(summary_data)
+    print("=========================================================================================")
+    print("🏆 FINAL 4-STATE BENCHMARK EVALUATION SUMMARY TABLE (For Thesis Chapter 4)")
+    print("=========================================================================================")
+    print(df_summary.to_string(index=False))
+    print("=========================================================================================")
 
 if __name__ == "__main__":
     main()
-    
