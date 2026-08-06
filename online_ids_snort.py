@@ -384,6 +384,7 @@ class OnlineLearningSwitch(object):
             msg.match.tp_dst = int(dst_port)
         msg.priority = 100
         msg.hard_timeout = 300
+        msg.idle_timeout = 60
         self.connection.send(msg)
         self.blocked_flows.add(flow_id)
         log.warning(f"🚫 Flow blocked via Snort Signature: {flow_id}")

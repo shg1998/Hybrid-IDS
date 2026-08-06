@@ -312,7 +312,7 @@ class OnlineLearningSwitch(object):
         msg.match.nw_src = src_ip; msg.match.nw_dst = dst_ip
         msg.match.nw_proto = {'tcp':6, 'udp':17, 'icmp':1}.get(proto, 6)
         if proto in ('tcp','udp'): msg.match.tp_src = int(src_port); msg.match.tp_dst = int(dst_port)
-        msg.priority = 100; msg.hard_timeout = 300
+        msg.priority = 100; msg.hard_timeout = 300; msg.idle_timeout = 60
         self.connection.send(msg); self.blocked_flows.add(flow_id)
         log.warning(f"🚫 Flow blocked: {flow_id}")
 
