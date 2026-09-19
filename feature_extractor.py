@@ -11,8 +11,8 @@ class FlowRecord:
     __slots__ = [
         'flow_id', 'start_time', 'last_time', 'pkt_count', 'src_bytes', 'dst_bytes',
         's_pkts', 'd_pkts', 'proto', 'service', 'state', 'src_ip', 'dst_ip',
-        'src_port', 'dst_port', 
-        'stcpb', 'dtcpb', 'swin', 'dwin',
+        'src_port', 'dst_port',
+        'stcpb', 'dtcpb', 'swin', 'dwin', 'sttl', 'dttl',
         'last_pkt_time', 'pkt_intervals', 'syn_time', 'synack_time', 'ack_time',
         'is_flow_ended'
     ]
@@ -38,6 +38,8 @@ class FlowRecord:
         self.dtcpb = 0
         self.swin = 0
         self.dwin = 0
+        self.sttl = 0
+        self.dttl = 0
         
         self.last_pkt_time = None
         self.pkt_intervals = deque(maxlen=50)
@@ -65,12 +67,16 @@ class FlowRecord:
                 self.src_ip = str(ip.srcip)
                 self.dst_ip = str(ip.dstip)
 
+            # ✅ Exact (was hard-coded to 0): TTL is present in every IPv4 header,
+            # no DPI needed - just wasn't being read before.
             if str(ip.srcip) == self.src_ip:
                 self.src_bytes += len(raw_data)
                 self.s_pkts += 1
+                self.sttl = getattr(ip, 'ttl', self.sttl)
             else:
                 self.dst_bytes += len(raw_data)
                 self.d_pkts += 1
+                self.dttl = getattr(ip, 'ttl', self.dttl)
 
         if tcp:
             self.proto = 'tcp'
@@ -135,16 +141,17 @@ class FlowRecord:
 
         f = {
             'dur': duration, 'sbytes': self.src_bytes, 'dbytes': self.dst_bytes,
-            'sloss': 0, 'dloss': 0, 'Sload': s_load, 'Dload': d_load, 
+            'Sload': s_load, 'Dload': d_load,
             'Spkts': self.s_pkts, 'Dpkts': self.d_pkts,
             'smeansz': s_meansz, 'dmeansz': d_meansz, 'trans_depth': 1 if self.service == 'http' else 0,
             'Sjit': jit, 'Djit': jit * 0.5, 'Sintpkt': avg_intpkt, 'Dintpkt': avg_intpkt,
             'tcprtt': tcprtt, 'synack': synack, 'ackdat': ackdat,
             'is_sm_ips_ports': 1 if (self.src_ip == self.dst_ip) else 0,
             'stcpb': self.stcpb, 'dtcpb': self.dtcpb, 'swin': self.swin, 'dwin': self.dwin,
-            'sttl': 0, 'dttl': 0,
+            'sttl': self.sttl, 'dttl': self.dttl,  # Exact: read from IPv4 header
             'sport': self.src_port, 'dsport': self.dst_port,
-            'res_bdy_len': 0,   # ✅ اضافه شدن کلید گم‌شده
+            # Unsupported: not observable at flow level without payload/DPI inspection.
+            'sloss': 0, 'dloss': 0, 'res_bdy_len': 0,
         }
 
         f.update(history.get_cross_features(self.src_ip, self.dst_ip, self.dst_port, self.service, self.state))
@@ -167,7 +174,11 @@ class ConnectionHistory:
 
     def get_cross_features(self, src_ip, dst_ip, dst_port, service, state) -> dict:
         buf = list(self.buffer)
-        abnormal_states = ['S0', 'S1', 'REJ', 'RSTO']
+        # ✅ باگ‌فیکس: این تابع قبلاً با واژگان UNSW خام (S0/S1/REJ/RSTO) چک می‌شد
+        # در حالی‌که FlowRecord.state هیچ‌وقت این مقادیر رو تولید نمی‌کنه (فقط
+        # REQ/ACC/CON/FIN/RST/INT/URP) - در نتیجه ct_state_ttl همیشه صفر می‌شد.
+        # نزدیک‌ترین معادل در واژگان این کدبیس: RST = اتصال رد/قطع‌شده (~REJ/RSTO).
+        abnormal_states = ['RST']
         
         return {
             'ct_srv_src': sum(1 for e in buf if e['src_ip'] == src_ip and e['service'] == service),
@@ -179,7 +190,9 @@ class ConnectionHistory:
             'ct_dst_src_ltm': sum(1 for e in buf if e['src_ip'] == src_ip and e['dst_ip'] == dst_ip),
             'ct_state_ttl': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['state'] in abnormal_states),
             'ct_flw_http_mthd': sum(1 for e in buf if e['dst_ip'] == dst_ip and e['is_http'] == 1),
-            'is_ftp_login': 0, 
+            # Unsupported: requires FTP control-channel payload inspection (DPI), out of scope
+            # for line-rate OpenFlow header/state tracking.
+            'is_ftp_login': 0,
             'ct_ftp_cmd': 0
         }
 

@@ -2,11 +2,16 @@
 import subprocess, time, sys, atexit, threading, json, csv, os
 from datetime import datetime
 
-SNORT_CONFIG_FILE = "/home/moho/snort_simple.conf"
+# RUN_ID + IDS_FEEDBACK_FILE are exported by run_4state_benchmark.py so this
+# agent writes to the exact same feedback file the POX controller is reading
+# for this run (advisor feedback: runs must not share/leak state).
+RUN_ID = os.environ.get("RUN_ID") or f"manual_{int(time.time())}"
+
+SNORT_CONFIG_FILE = f"/home/moho/snort_simple_{RUN_ID}.conf"
 SNORT_INTERFACE   = "h3-eth0"
-SNORT_LOG_DIR     = "/home/moho/snort_log"
-FEEDBACK_FILE     = "/home/moho/pox_snort_feedback.log"
-LOG_CSV           = "/home/moho/snort_alerts.csv"
+SNORT_LOG_DIR     = f"/home/moho/snort_log_{RUN_ID}"
+FEEDBACK_FILE     = os.environ.get("IDS_FEEDBACK_FILE") or f"/home/moho/pox_snort_feedback_{RUN_ID}.log"
+LOG_CSV           = f"/home/moho/snort_alerts_{RUN_ID}.csv"
 
 snort_process = None
 
