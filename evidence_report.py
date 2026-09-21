@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 evidence_report.py - گزارش شواهد end-to-end برای هر attack_type
-فیدبک استاد بخش ۴-۳: "یک evidence end-to-end انجام شود برای: detection،
+فیدبک  بخش ۴-۳: "یک evidence end-to-end انجام شود برای: detection،
 policy installation، توقف flow مخرب، ادامه flow سالم، recovery."
 
 ورودی این اسکریپت خروجی evaluate_run.py است (eval_flows_<mode>_<run_id>.csv +

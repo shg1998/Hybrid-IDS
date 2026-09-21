@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 aggregate_runs.py - تجمیع چند اجرای مستقل (Mean ± 95% CI)
-فیدبک استاد، بخش ۴ (خروجی مورد انتظار در گزارش بعدی)، بندهای ۱، ۲ و ۴:
+فیدبک  بخش ۴ (خروجی مورد انتظار در گزارش بعدی)، بندهای ۱، ۲ و ۴:
   "جدول مقایسه چهار روش با Precision, Recall, F1, FPR, MCC, Detection Delay
    و Mitigation Delay" + "نتایج جداگانه برای هر attack_type" +
   "چند run مستقل با Mean و confidence interval؛ نه یک اجرای واحد یا CSVهای
@@ -115,7 +115,7 @@ def main():
             print(f"⚠️ {mode}: هیچ eval_{mode}_*.csv پیدا نشد (ابتدا evaluate_run.py را اجرا کنید).")
             continue
         if n_runs == 1:
-            print(f"⚠️ {mode}: فقط ۱ run موجود است - CI معنی‌دار نیست. طبق فیدبک استاد حداقل چند run "
+            print(f"⚠️ {mode}: فقط ۱ run موجود است - CI معنی‌دار نیست. طبق فیدبک حداقل چند run "
                   f"مستقل (پیشنهاد: ≥5) با --repeats در run_4state_benchmark.py لازم است.")
         summary = summarize(data)
         print(f"\n=== {mode} (n_runs={n_runs}) ===")

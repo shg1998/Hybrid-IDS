@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-evaluate_run.py - ارزیابی آفلاین واقعی یک اجرا (فیدبک استاد بخش ۲ و ۳)
+evaluate_run.py - ارزیابی آفلاین واقعی یک اجرا (فیدبک بخش ۲ و ۳)
 
 هیچ ضریب تنظیم مصنوعی این‌جا وجود ندارد:
   - gt_label از logs/ground_truth_<run_id>.csv می‌آید که کاملاً مستقل از
@@ -108,7 +108,7 @@ def load_flows(log_dir, mode, run_id):
             # TP/FP بگیریم، هر تشخیص درستِ ML که بعداً recovery خورده به‌اشتباه
             # FN حساب می‌شود. بنابراین معیار تشخیص "آیا این فلو حداقل یک‌بار
             # block شد؟" است - recovery/unblock بعدی یک مرحله‌ی جدا (بخش ۴-۳ فیدبک
-            # استاد) است، نه انکار اینکه detection/block اتفاق افتاده.
+            # ) است، نه انکار اینکه detection/block اتفاق افتاده.
             if r['final_decision'] == 'block':
                 entry['ever_blocked'] = True
             if event_time >= entry['last_event_time']:

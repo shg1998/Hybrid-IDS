@@ -1,6 +1,6 @@
 # pox/ext/online_ids.py (Unified 4-mode Execution Core)
 #
-# اصلاح‌شده طبق فیدبک استاد (بخش‌های ۱، ۲، ۵، ۶):
+# اصلاح‌شده طبق فیدبک  (بخش‌های ۱، ۲، ۵، ۶):
 #  - دیگر هیچ IP-heuristic برای برچسب واقعی استفاده نمی‌شود (Ground Truth کاملاً
 #    مستقل، در ground_truth.py، توسط سناریوی حمله تعیین می‌شود - نه در این فایل).
 #  - این کنترلر دیگر TP/FP/FN/TN/Precision/Recall/F1/FPR را آنلاین حدس نمی‌زند؛
