@@ -56,7 +56,7 @@ pip install river pandas matplotlib
 
 ## 📋 Comprehensive Feature Mapping Table (UNSW-NB15 Space)
 
-**Feature audit legend** (فیدبک استاد بخش ۲-۴: _"feature‌ها باید به سه گروه Exact / Approximate / Unsupported مستندسازی شوند"_):
+**Feature audit legend**:
 
 - 🟢 **Exact** — measured directly from real packet/header data with no proxy or default.
 - 🟡 **Approximate** — a real signal, but derived through a heuristic/simplification that can diverge from the true UNSW-NB15 definition (documented per-row below).
